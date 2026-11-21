@@ -1,2 +1,5 @@
 dist/
+windows/dist/
+mac/bau/
+mac/kern/
 *.exe

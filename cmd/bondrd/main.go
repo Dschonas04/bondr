@@ -1,0 +1,111 @@
+// bondrd ist der Kern von Bondr: Lastverteiler über alle Internetzugänge, lokaler Proxy
+// und Downloader. Die Apps für Windows und macOS starten ihn und steuern ihn über eine
+// lokale Schnittstelle.
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
+	"time"
+
+	"github.com/Dschonas04/bondr/internal/api"
+	"github.com/Dschonas04/bondr/internal/einstellungen"
+	"github.com/Dschonas04/bondr/internal/laden"
+	"github.com/Dschonas04/bondr/internal/proxy"
+	"github.com/Dschonas04/bondr/internal/system"
+	"github.com/Dschonas04/bondr/internal/verteiler"
+)
+
+// Version wird beim Bau gesetzt.
+var Version = "dev"
+
+func main() {
+	apiPort := flag.Int("api", 47801, "Port der Steuerung")
+	proxyPort := flag.Int("proxy", 1080, "Port des Proxys (SOCKS5 und HTTP)")
+	eltern := flag.Int("eltern", 0, "Prozessnummer der App; endet sie, endet auch bondrd")
+	version := flag.Bool("version", false, "Version ausgeben")
+	flag.Parse()
+	if *version {
+		fmt.Println(Version)
+		return
+	}
+
+	ordner := einstellungen.Ordner()
+	os.MkdirAll(ordner, 0o700)
+	if f, err := os.OpenFile(filepath.Join(ordner, "bondrd.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600); err == nil {
+		log.SetOutput(f)
+	}
+
+	apiL, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *apiPort))
+	if err != nil {
+		log.Printf("Steuerung belegt, läuft schon: %v", err)
+		return
+	}
+	proxyAdresse := fmt.Sprintf("127.0.0.1:%d", *proxyPort)
+	proxyL, err := net.Listen("tcp", proxyAdresse)
+	if err != nil {
+		log.Printf("Proxy-Port %s belegt: %v", proxyAdresse, err)
+	}
+
+	e := einstellungen.Laden()
+	v := verteiler.Neu(e)
+	ctx, stopp := context.WithCancel(context.Background())
+	go v.Laufen(ctx)
+
+	if proxyL != nil {
+		go func() {
+			if err := (&proxy.Proxy{V: v}).Dienen(ctx, proxyL); err != nil {
+				log.Printf("Proxy: %v", err)
+			}
+		}()
+	}
+
+	l := &laden.Lader{V: v, Ordner: func() string { return e.Werte().Ordner }}
+	a := &api.API{V: v, L: l, E: e, ProxyAdresse: proxyAdresse, Version: Version, Beenden: stopp}
+	if err := a.SchluesselSchreiben(); err != nil {
+		log.Fatalf("Schlüssel: %v", err)
+	}
+	if e.Werte().Systemproxy {
+		if err := api.SystemproxySchalten(e, proxyAdresse, true); err != nil {
+			log.Printf("Systemproxy: %v", err)
+		}
+	}
+	srv := &http.Server{Handler: a.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	go srv.Serve(apiL)
+	log.Printf("bondrd %s: Steuerung %s, Proxy %s", Version, apiL.Addr(), proxyAdresse)
+
+	if *eltern > 0 {
+		go func() {
+			for ctx.Err() == nil {
+				time.Sleep(2 * time.Second)
+				if !lebt(*eltern) {
+					log.Printf("App %d beendet, bondrd endet", *eltern)
+					stopp()
+					return
+				}
+			}
+		}()
+	}
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	select {
+	case <-sig:
+	case <-ctx.Done():
+	}
+	stopp()
+	// Proxy freigeben, sonst hätten Browser kein Internet; die Einstellung bleibt
+	system.ProxyEntfernen(proxyAdresse)
+	c, fertig := context.WithTimeout(context.Background(), 2*time.Second)
+	defer fertig()
+	srv.Shutdown(c)
+	os.Remove(api.SchluesselDatei())
+}

@@ -1,37 +1,67 @@
 # Bondr
 
-Bondr nutzt alle Internetzugänge eines Windows-Rechners gleichzeitig: Kabel, WLAN und das Handy per USB-Tethering. Ein Windows-Programm mit eigenem Fenster und Symbol im Infobereich, ohne Installation und ohne Zusatzsoftware (.NET Framework 4.8 ist in Windows 10 und 11 enthalten).
+Bondr nutzt alle Internetzugänge eines Rechners gleichzeitig, wie ein Lastverteiler: Kabel, WLAN, Handy per USB oder ein zweiter Router. Für Windows 10/11 und macOS 14+ (Apple Silicon wie M4 und Intel).
 
-## Was es macht
+## Wie ein nginx-Upstream
 
-**Datei laden.** Eine Datei wird in Abschnitte geteilt, die gleichzeitig über alle Wege kommen; hier addiert sich die Bandbreite auch für einen einzelnen Download. Je Weg laufen drei lange Verbindungen. Wird eine frei, übernimmt sie die hintere Hälfte des größten offenen Abschnitts, so bremst der langsamere Weg am Ende nicht. Antwortet der Server mit 429 oder 503, nimmt Bondr Verbindungen zurück.
+Jeder Weg hat ein **Gewicht** (1 bis 10) und eine **Rolle**:
 
-**Programme verteilen.** Bondr ist ein lokaler Proxy (SOCKS5 und HTTP auf `127.0.0.1:1080`). Mit „Windows-Proxy verwenden“ benutzen ihn Browser und alle Programme, die den Windows-Proxy beachten. Jede neue Verbindung geht über den Weg, der gerade am wenigsten zu tun hat. Eine einzelne Verbindung wird dadurch nicht schneller, viele gleichzeitige schon. Adressen im LAN (10.x, 192.168.x, .local, .fritz.box) gehen direkt.
+| Rolle | Bedeutung | nginx |
+|---|---|---|
+| Haupt | bekommt Verbindungen nach Gewicht | `server … weight=n` |
+| Reserve | nur, wenn kein Hauptweg geht | `backup` |
+| Aus | nie | `down` |
 
-Echtes Bündeln einer einzelnen Verbindung braucht einen Server auf der anderen Seite (wie Speedify oder MPTCP); das macht Bondr nicht.
+Vorgabe: Kabel Gewicht 10, WLAN 7, Handy (USB-Tethering) 3, alle als Hauptweg. Die eigene Verbindung zum Router wird also bevorzugt, das Handy läuft mit.
 
-## Bedienung
+**Strategien** für neue Verbindungen:
 
-- Fenster schließen legt Bondr in den Infobereich, beenden über „Beenden“ oder das Symbol.
-- Haken bei einem Weg entfernen, um ihn nicht zu benutzen.
-- Ist der Windows-Proxy an, trägt sich Bondr in den Autostart ein (startet dann still im Infobereich), damit der Browser nach einem Neustart weiter Internet hat. Beim Beenden schaltet Bondr den Proxy ab.
-- Einstellungen unter `HKCU\Software\Bondr`, Protokoll in `%APPDATA%\Bondr\bondr.log`.
+- **Wenigste Verbindungen** (Vorgabe): an den Weg mit den wenigsten offenen Verbindungen im Verhältnis zum Gewicht (`least_conn`).
+- **Gewichtet reihum**: reihum, jeder Weg so oft wie sein Gewicht (nginx-Standard, „smooth weighted round robin“).
+- **Nur bei Ausfall**: alles über den stärksten Hauptweg, die anderen springen nur bei Ausfall ein.
 
-Für Messungen ohne Fenster: `Bondr.exe --messen <URL> <Ordner>` schreibt `messung.txt` in den Ordner.
+Alle 15 Sekunden prüft Bondr jeden Weg mit einer Probeverbindung (`health_check`); ein Weg, der nicht durchkommt, bekommt keine neuen Verbindungen, bis er wieder geht.
 
-## Wie die Wege gebunden werden
+## Was verteilt wird
 
-Jede ausgehende Verbindung wird an die Adresse des Adapters gebunden und bekommt `IP_UNICAST_IF`, damit Windows sie wirklich über diesen Adapter schickt. Downloads laufen über einen eigenen kleinen HTTP/1.1-Client, weil die eingebauten Klassen Verbindungen je Server teilen und sich nicht pro Anfrage an einen Adapter binden lassen. Adapter werden alle 3 Sekunden neu erkannt.
+**Programme über den Systemproxy.** Bondr ist ein lokaler Proxy (SOCKS5 und HTTP auf `127.0.0.1:1080`). Mit „Windows-Proxy“ bzw. „Systemproxy“ benutzen ihn Browser und alle Programme, die den Systemproxy beachten. Eine einzelne Verbindung läuft immer über einen Weg; viele gleichzeitige verteilen sich. Adressen im LAN gehen direkt. Solange der Proxy an ist, startet Bondr bei der Anmeldung mit, sonst hätte der Browser nach einem Neustart kein Internet.
+
+**Downloads.** Eine Datei kommt in Abschnitten gleichzeitig über die Hauptwege, je Weg so viele Verbindungen, wie das Gewicht hergibt; freie Verbindungen übernehmen die hintere Hälfte des größten offenen Abschnitts. Hier addiert sich die Bandbreite auch für eine einzelne Datei.
+
+Echtes Bündeln einer einzelnen Verbindung braucht einen Server auf der anderen Seite (MPTCP, Speedify); das macht Bondr nicht.
+
+## Installieren
+
+- **Windows:** `Bondr-<Fassung>-Setup.exe` aus den Releases. Installiert für den angemeldeten Benutzer (ohne Adminrechte) nach `%LOCALAPPDATA%\Programs\Bondr`, mit Startmenü-Eintrag und Deinstallation über „Apps“.
+- **macOS:** `Bondr-<Fassung>-mac.dmg` öffnen und Bondr in „Programme“ ziehen. Bondr sitzt in der Menüleiste. Die App ist nur ad-hoc signiert: beim ersten Start Rechtsklick, „Öffnen“.
+
+## Aufbau
+
+| Teil | Ordner | Sprache |
+|---|---|---|
+| Kern `bondrd`: Lastverteiler, Proxy, Downloader, Steuerung auf 127.0.0.1:47801 | `cmd/`, `internal/` | Go |
+| Windows-App mit Infobereich, Installer | `windows/` | C# (WinForms, .NET Framework 4.8), NSIS |
+| Mac-App in der Menüleiste | `mac/` | Swift (SwiftUI) |
+
+Die Apps starten den Kern und steuern ihn; die Steuerung verlangt einen Schlüssel aus einer nur für den Benutzer lesbaren Datei. Jede ausgehende Verbindung wird an ihren Adapter gebunden (`IP_UNICAST_IF` unter Windows, `IP_BOUND_IF` unter macOS).
+
+Einstellungen: `%APPDATA%\Bondr\einstellungen.json` bzw. `~/Library/Application Support/Bondr/einstellungen.json`.
 
 ## Bauen
 
-Unter Windows, ohne Visual Studio, mit dem C#-Compiler aus dem .NET Framework:
-
 ```
-bauen.cmd
+go test ./...
+# Windows (auf Windows, ohne Visual Studio):
+go build -ldflags "-H windowsgui" -o windows/dist/bondrd.exe ./cmd/bondrd
+windows\bauen.cmd
+makensis windows/installer.nsi
+# macOS (mit Xcode):
+GOOS=darwin GOARCH=arm64 go build -o mac/kern/bondrd-arm64 ./cmd/bondrd
+GOOS=darwin GOARCH=amd64 go build -o mac/kern/bondrd-amd64 ./cmd/bondrd
+mac/bauen.sh 3.0.0
 ```
 
-Ergebnis: `dist\Bondr.exe`.
+Releases baut GitHub Actions bei jedem Tag `v*`.
 
 ## Lizenz
 

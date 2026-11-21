@@ -3,34 +3,107 @@ name: release
 on:
   push:
     tags: ['v*']
+    branches: [main]
   pull_request:
 
 permissions:
   contents: read
 
 jobs:
-  windows:
-    runs-on: windows-latest
+  pruefen:
+    runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: bauen
-        shell: cmd
-        run: bauen.cmd
-      - name: Prüfsumme
-        shell: pwsh
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - run: go vet ./...
+      - run: GOOS=windows go vet ./...
+      - run: GOOS=darwin GOARCH=arm64 go vet ./...
+      - run: go test -race ./...
+
+  windows:
+    needs: pruefen
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - name: Fassung
+        shell: bash
+        env:
+          REF: ${{ github.ref_name }}
         run: |
-          $h = (Get-FileHash dist\Bondr.exe -Algorithm SHA256).Hash.ToLower()
-          "$h  Bondr.exe" | Out-File -Encoding ascii dist\pruefsumme.txt
+          f="${REF#v}"
+          case "$f" in [0-9]*.[0-9]*.[0-9]*) : ;; *) f="0.0.0" ;; esac
+          echo "FASSUNG=$f" >> "$GITHUB_ENV"
+      - name: Kern bauen
+        shell: bash
+        run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -H windowsgui -X main.Version=$FASSUNG" -o windows/dist/bondrd.exe ./cmd/bondrd
+      - name: App bauen
+        shell: cmd
+        working-directory: windows
+        run: bauen.cmd
+      - name: Installer bauen
+        shell: pwsh
+        working-directory: windows
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) { choco install nsis -y --no-progress | Out-Null; $env:PATH += ";C:\Program Files (x86)\NSIS" }
+          makensis -V2 "-DFASSUNG=$env:FASSUNG" installer.nsi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: windows/dist/Bondr-*-Setup.exe
+
+  mac:
+    needs: pruefen
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - name: bauen
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          f="${REF#v}"
+          case "$f" in [0-9]*.[0-9]*.[0-9]*) : ;; *) f="0.0.0" ;; esac
+          mkdir -p mac/kern
+          for a in arm64 amd64; do
+            CGO_ENABLED=0 GOOS=darwin GOARCH=$a go build -trimpath -ldflags "-s -w -X main.Version=$f" -o mac/kern/bondrd-$a ./cmd/bondrd
+          done
+          ./mac/bauen.sh "$f"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mac
+          path: mac/bau/Bondr-*-mac.dmg
+
+  veroeffentlichen:
+    needs: [windows, mac]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: alle
+      - run: cd alle && sha256sum */* > ../pruefsummen.txt && cat ../pruefsummen.txt
       - uses: softprops/action-gh-release@v3
-        if: github.ref_type == 'tag'
         with:
           files: |
-            dist/Bondr.exe
-            dist/pruefsumme.txt
+            alle/**/*
+            pruefsummen.txt
           generate_release_notes: true
           fail_on_unmatched_files: true
