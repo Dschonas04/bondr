@@ -400,8 +400,11 @@ namespace Bondr
         void ImOrdnerZeigen()
         {
             var d = GewaehlterDownload();
-            if (d != null && Kern.S(d, "status") == "fertig")
-                Process.Start("explorer.exe", "/select,\"" + Kern.S(d, "datei") + "\"");
+            if (d == null || Kern.S(d, "status") != "fertig") return;
+            // Nur echte lokale Dateien an den Explorer geben
+            var datei = Kern.S(d, "datei");
+            if (datei.IndexOf('"') >= 0 || datei.StartsWith(@"\\") || !Path.IsPathRooted(datei) || !File.Exists(datei)) return;
+            Process.Start("explorer.exe", "/select,\"" + Path.GetFullPath(datei) + "\"");
         }
 
         static string Zahl(double x, int stellen) { return x.ToString("N" + stellen, De); }

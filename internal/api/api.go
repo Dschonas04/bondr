@@ -25,6 +25,7 @@ type API struct {
 	L            *laden.Lader
 	E            *einstellungen.Speicher
 	ProxyAdresse string
+	ProxyBereit  bool // Proxy-Port gehört bondrd
 	Version      string
 	Beenden      func()
 	schluessel   string
@@ -104,16 +105,17 @@ func (a *API) stand(w http.ResponseWriter, r *http.Request) {
 		wege = []verteiler.Stand{}
 	}
 	antworten(w, map[string]any{
-		"version":     a.Version,
-		"strategie":   e.Strategie,
-		"systemproxy": e.Systemproxy && system.ProxyAktiv(a.ProxyAdresse),
-		"gewuenscht":  e.Systemproxy,
-		"proxy":       a.ProxyAdresse,
-		"ordner":      e.Ordner,
-		"mbit_rein":   rein,
-		"mbit_raus":   raus,
-		"wege":        wege,
-		"downloads":   dl,
+		"version":      a.Version,
+		"strategie":    e.Strategie,
+		"systemproxy":  e.Systemproxy && system.ProxyAktiv(a.ProxyAdresse),
+		"gewuenscht":   e.Systemproxy,
+		"proxy":        a.ProxyAdresse,
+		"proxy_bereit": a.ProxyBereit,
+		"ordner":       e.Ordner,
+		"mbit_rein":    rein,
+		"mbit_raus":    raus,
+		"wege":         wege,
+		"downloads":    dl,
 	})
 }
 
@@ -178,6 +180,10 @@ func (a *API) systemproxy(w http.ResponseWriter, r *http.Request) {
 		An bool `json:"an"`
 	}
 	if !lesen(w, r, &q) {
+		return
+	}
+	if q.An && !a.ProxyBereit {
+		http.Error(w, "Der Proxy-Port "+a.ProxyAdresse+" ist von einem anderen Programm belegt; der Systemproxy bleibt aus.", http.StatusConflict)
 		return
 	}
 	if err := SystemproxySchalten(a.E, a.ProxyAdresse, q.An); err != nil {

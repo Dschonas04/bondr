@@ -16,7 +16,7 @@ namespace Bondr
 {
     static class Programm
     {
-        public const string Version = "3.0.0";
+        public const string Version = "3.0.1";
 
         [STAThread]
         static int Main(string[] args)

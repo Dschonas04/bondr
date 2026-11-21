@@ -69,11 +69,12 @@ func main() {
 	}
 
 	l := &laden.Lader{V: v, Ordner: func() string { return e.Werte().Ordner }}
-	a := &api.API{V: v, L: l, E: e, ProxyAdresse: proxyAdresse, Version: Version, Beenden: stopp}
+	a := &api.API{V: v, L: l, E: e, ProxyAdresse: proxyAdresse, ProxyBereit: proxyL != nil, Version: Version, Beenden: stopp}
 	if err := a.SchluesselSchreiben(); err != nil {
 		log.Fatalf("Schlüssel: %v", err)
 	}
-	if e.Werte().Systemproxy {
+	// Nur wenn der Proxy-Port wirklich uns gehört, sonst ginge der Verkehr an ein fremdes Programm
+	if e.Werte().Systemproxy && proxyL != nil {
 		if err := api.SystemproxySchalten(e, proxyAdresse, true); err != nil {
 			log.Printf("Systemproxy: %v", err)
 		}
