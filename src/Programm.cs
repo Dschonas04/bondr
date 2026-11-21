@@ -18,7 +18,7 @@ namespace Bondr
 {
     static class Programm
     {
-        public const string Version = "2.0.0";
+        public const string Version = "2.0.1";
         public const int ProxyPort = 1080;
         public static string ProxyAdresse { get { return "127.0.0.1:" + ProxyPort; } }
         public static readonly string Ordner = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Bondr");

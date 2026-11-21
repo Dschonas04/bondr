@@ -45,11 +45,13 @@ namespace Bondr
                 Programm.Protokoll("Proxy-Port belegt: " + e.Message);
                 MessageBox.Show("Der Proxy-Port " + Programm.ProxyPort + " ist belegt. Downloads gehen trotzdem.", "Bondr", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
-            if (Einstellungen.Systemproxy)
+            try
             {
-                try { Systemproxy.Schalten(Programm.ProxyAdresse, true); }
-                catch (Exception e) { Programm.Protokoll("Systemproxy: " + e.Message); }
+                // Autostart nur, solange der Windows-Proxy gewünscht ist; alte Einträge verschwinden so
+                if (Einstellungen.Systemproxy) Systemproxy.Schalten(Programm.ProxyAdresse, true);
+                else Systemproxy.Autostart(false);
             }
+            catch (Exception e) { Programm.Protokoll("Systemproxy: " + e.Message); }
 
             Aufbauen();
             ThreadPool.RegisterWaitForSingleObject(zeigen, (s, t) =>
