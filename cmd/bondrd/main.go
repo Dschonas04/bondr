@@ -21,6 +21,7 @@ import (
 	"github.com/Dschonas04/bondr/internal/laden"
 	"github.com/Dschonas04/bondr/internal/proxy"
 	"github.com/Dschonas04/bondr/internal/system"
+	"github.com/Dschonas04/bondr/internal/umleitung"
 	"github.com/Dschonas04/bondr/internal/verteiler"
 )
 
@@ -32,6 +33,8 @@ func main() {
 	proxyPort := flag.Int("proxy", 1080, "Port des Proxys (SOCKS5 und HTTP)")
 	eltern := flag.Int("eltern", 0, "Prozessnummer der App; endet sie, endet auch bondrd")
 	version := flag.Bool("version", false, "Version ausgeben")
+	umleiten := flag.Bool("umleitung", false, "Verbindungen der eingestellten Programme abfangen (Windows, Adminrechte)")
+	einrichten := flag.Bool("umleitung-einrichten", false, "Aufgabe für die Umleitung anlegen und starten (Adminrechte)")
 	flag.Parse()
 	if *version {
 		fmt.Println(Version)
@@ -40,8 +43,26 @@ func main() {
 
 	ordner := einstellungen.Ordner()
 	os.MkdirAll(ordner, 0o700)
-	if f, err := os.OpenFile(filepath.Join(ordner, "bondrd.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600); err == nil {
+	logName := "bondrd.log"
+	if *umleiten || *einrichten {
+		logName = "umleitung.log"
+	}
+	if f, err := os.OpenFile(filepath.Join(ordner, logName), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600); err == nil {
 		log.SetOutput(f)
+	}
+	if *einrichten {
+		if err := umleitung.Einrichten(); err != nil {
+			log.Printf("Einrichten: %v", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *umleiten {
+		if err := umleitung.Laufen(fmt.Sprintf("127.0.0.1:%d", *proxyPort), fmt.Sprintf("127.0.0.1:%d", *apiPort)); err != nil {
+			log.Printf("Umleitung: %v", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	apiL, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *apiPort))

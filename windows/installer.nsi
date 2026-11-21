@@ -35,13 +35,19 @@ VIAddVersionKey "LegalCopyright" "MIT"
 !define UNINST "Software\Microsoft\Windows\CurrentVersion\Uninstall\Bondr"
 
 Section "Bondr"
-  ; laufende Fassung beenden, damit die Dateien ersetzt werden können
+  ; laufende Fassung beenden, damit die Dateien ersetzt werden können; der Umleiter
+  ; (mit Adminrechten) endet von selbst, sobald bondrd weg ist
   nsExec::Exec 'taskkill /im Bondr.exe /f'
   nsExec::Exec 'taskkill /im bondrd.exe /f'
   Sleep 800
+  nsExec::Exec 'schtasks /end /tn "Bondr Umleitung"'
+  Sleep 4000
   SetOutPath "$INSTDIR"
   File "dist\Bondr.exe"
   File "dist\bondrd.exe"
+  File "dist\WinDivert.dll"
+  File "dist\WinDivert64.sys"
+  File "dist\WinDivert-LIZENZ.txt"
   WriteUninstaller "$INSTDIR\Deinstallieren.exe"
   CreateShortCut "$SMPROGRAMS\Bondr.lnk" "$INSTDIR\Bondr.exe"
   WriteRegStr HKCU "${UNINST}" "DisplayName" "Bondr"
@@ -59,7 +65,9 @@ SectionEnd
 Section "Uninstall"
   nsExec::Exec 'taskkill /im Bondr.exe /f'
   nsExec::Exec 'taskkill /im bondrd.exe /f'
-  Sleep 800
+  nsExec::Exec 'schtasks /end /tn "Bondr Umleitung"'
+  Sleep 4000
+  nsExec::Exec 'schtasks /delete /tn "Bondr Umleitung" /f'
   ; Windows-Proxy abschalten, falls er noch auf Bondr zeigt
   ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Internet Settings" "ProxyServer"
   StrCmp $0 "127.0.0.1:1080" 0 +2
@@ -68,6 +76,9 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\Bondr.lnk"
   Delete "$INSTDIR\Bondr.exe"
   Delete "$INSTDIR\bondrd.exe"
+  Delete "$INSTDIR\WinDivert.dll"
+  Delete "$INSTDIR\WinDivert64.sys"
+  Delete "$INSTDIR\WinDivert-LIZENZ.txt"
   Delete "$INSTDIR\Deinstallieren.exe"
   RMDir "$INSTDIR"
   DeleteRegKey HKCU "${UNINST}"

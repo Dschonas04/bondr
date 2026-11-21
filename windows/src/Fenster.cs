@@ -35,6 +35,11 @@ namespace Bondr
         readonly Label erklaerung = new Label();
         readonly CheckBox proxySchalter = new CheckBox();
         readonly CheckBox anmeldung = new CheckBox();
+        readonly CheckBox umleitungSchalter = new CheckBox();
+        readonly TextBox programme = new TextBox();
+        readonly Label umleitungText = new Label();
+        DateTime helferVersucht = DateTime.MinValue;
+        int helferStartet;
         readonly TextBox adresse = new TextBox();
         readonly Label ordnerText = new Label();
         readonly ListView downloads = new ListView();
@@ -168,6 +173,27 @@ namespace Bondr
             anmeldung.Checked = Autostart.An;
             anmeldung.Click += (s, e) => { try { Autostart.An = anmeldung.Checked; } catch (Exception ex) { Fehler(ex); } };
             fv.Controls.Add(anmeldung);
+            var um = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 6, 0, 0) };
+            umleitungSchalter.Text = "Auch Programme ohne Proxy verteilen:";
+            umleitungSchalter.AutoSize = true;
+            umleitungSchalter.Margin = new Padding(0, 3, 6, 0);
+            umleitungSchalter.Click += (s, e) => UmleitungSchalten(umleitungSchalter.Checked);
+            programme.Width = 260;
+            Hinweistext(programme, "steam.exe, EpicGamesLauncher.exe");
+            programme.Leave += (s, e) => ProgrammeSenden();
+            programme.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; ProgrammeSenden(); } };
+            umleitungText.AutoSize = true;
+            umleitungText.ForeColor = SystemColors.GrayText;
+            umleitungText.Margin = new Padding(8, 3, 0, 0);
+            um.Controls.Add(umleitungSchalter);
+            um.Controls.Add(programme);
+            um.Controls.Add(umleitungText);
+            fv.Controls.Add(um);
+            fv.Controls.Add(new Label
+            {
+                Text = "Für Steam und andere Launcher, die den Windows-Proxy nicht beachten. Braucht beim ersten Einschalten einmal Adminrechte (WinDivert).",
+                AutoSize = true, MaximumSize = new Size(840, 0), ForeColor = SystemColors.GrayText, Margin = new Padding(2, 2, 0, 0)
+            });
             gVert.Controls.Add(fv);
             raster.Controls.Add(gVert, 0, 2);
 
@@ -339,6 +365,77 @@ namespace Bondr
             Senden("/systemproxy", Kern.D("an", an));
         }
 
+        void UmleitungSchalten(bool an)
+        {
+            if (an)
+            {
+                try { Autostart.An = true; } catch { }
+                anmeldung.Checked = true;
+            }
+            var programmText = programme.Text;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                Exception f = null;
+                try
+                {
+                    kern.Senden("/umleitung", Kern.D("an", an, "programme", programmText));
+                    if (an) HelferStarten(true);
+                }
+                catch (Exception e) { f = e; }
+                if (f != null && an) { try { kern.Senden("/umleitung", Kern.D("an", false)); } catch { } }
+                try { BeginInvoke(new Action(() => { if (f != null) Fehler(f); Holen(); })); } catch { }
+            });
+        }
+
+        void ProgrammeSenden()
+        {
+            if (stand == null) return;
+            var u = Kern.O(stand, "umleitung");
+            if (programme.Text.Trim() == "" || programme.Text == Kern.S(u, "programme")) return;
+            Senden("/umleitung", Kern.D("an", Kern.B(u, "gewuenscht"), "programme", programme.Text));
+        }
+
+        /// <summary>Startet den Umleiter über die geplante Aufgabe; fehlt sie, legt bondrd sie
+        /// mit Adminrechten an (nur wenn mitRueckfrage).</summary>
+        void HelferStarten(bool mitRueckfrage)
+        {
+            if (Interlocked.Exchange(ref helferStartet, 1) == 1) return;
+            try
+            {
+                helferVersucht = DateTime.Now;
+                var si = new ProcessStartInfo("schtasks.exe", "/run /tn \"Bondr Umleitung\"")
+                {
+                    UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden,
+                    RedirectStandardOutput = true, RedirectStandardError = true
+                };
+                using (var p = Process.Start(si))
+                {
+                    p.StandardOutput.ReadToEnd();
+                    p.StandardError.ReadToEnd();
+                    p.WaitForExit(10000);
+                    if (p.ExitCode == 0) return;
+                }
+                if (!mitRueckfrage) return;
+                var exe = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "bondrd.exe");
+                var admin = new ProcessStartInfo(exe, "--umleitung-einrichten") { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden };
+                try
+                {
+                    using (var p = Process.Start(admin))
+                    {
+                        p.WaitForExit(30000);
+                        if (p.ExitCode != 0)
+                            throw new InvalidOperationException("Die Umleitung ließ sich nicht einrichten, Einzelheiten in %APPDATA%\\Bondr\\umleitung.log.");
+                    }
+                }
+                catch (System.ComponentModel.Win32Exception e)
+                {
+                    if (e.NativeErrorCode == 1223) throw new InvalidOperationException("Ohne Adminrechte kann Bondr die Verbindungen nicht abfangen; die Umleitung bleibt aus.");
+                    throw;
+                }
+            }
+            finally { Interlocked.Exchange(ref helferStartet, 0); }
+        }
+
         void RegelSenden()
         {
             if (aktualisiere || wege.SelectedItems.Count != 1 || rolle.SelectedIndex < 0) return;
@@ -457,6 +554,22 @@ namespace Bondr
             proxySchalter.Checked = sp;
             trayProxy.Checked = sp;
             ordnerText.Text = "Ziel: " + Kern.S(s, "ordner");
+            var u = Kern.O(s, "umleitung");
+            bool uGewuenscht = Kern.B(u, "gewuenscht"), uLaeuft = Kern.B(u, "laeuft");
+            umleitungSchalter.Checked = uGewuenscht;
+            if (!programme.Focused) programme.Text = Kern.S(u, "programme");
+            var uFehler = Kern.S(u, "fehler");
+            umleitungText.ForeColor = uFehler != "" && !uLaeuft ? Color.Firebrick : SystemColors.GrayText;
+            umleitungText.Text = !uGewuenscht ? ""
+                : uLaeuft ? (Kern.B(u, "aktiv") ? "aktiv" : "wartet auf den Proxy") + ", " + ((int)Kern.N(u, "umgeleitet")).ToString(De) + " Verbindungen umgeleitet, " + ((int)Kern.N(u, "offen")).ToString(De) + " offen"
+                : uFehler != "" ? "Fehler: " + uFehler
+                : "startet …";
+            // Läuft der Umleiter nicht (etwa nach einem Neustart), über die Aufgabe ohne Rückfrage starten
+            if (uGewuenscht && !uLaeuft && (DateTime.Now - helferVersucht).TotalSeconds > 30)
+            {
+                helferVersucht = DateTime.Now;
+                ThreadPool.QueueUserWorkItem(_ => { try { HelferStarten(false); } catch { } });
+            }
             var st = Kern.S(s, "strategie");
             sWenigste.Checked = st == "wenigste";
             sReihum.Checked = st == "reihum";

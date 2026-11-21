@@ -115,6 +115,12 @@ namespace Bondr
             return d.TryGetValue(k, out o) && o is bool && (bool)o;
         }
 
+        public static Dictionary<string, object> O(Dictionary<string, object> d, string k)
+        {
+            object o;
+            return d.TryGetValue(k, out o) && o is Dictionary<string, object> ? (Dictionary<string, object>)o : new Dictionary<string, object>();
+        }
+
         public static List<Dictionary<string, object>> L(Dictionary<string, object> d, string k)
         {
             var aus = new List<Dictionary<string, object>>();

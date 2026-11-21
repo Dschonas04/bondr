@@ -26,6 +26,8 @@ Alle 15 Sekunden prüft Bondr jeden Weg mit einer Probeverbindung (`health_check
 
 **Programme über den Systemproxy.** Bondr ist ein lokaler Proxy (SOCKS5 und HTTP auf `127.0.0.1:1080`). Mit „Windows-Proxy“ bzw. „Systemproxy“ benutzen ihn Browser und alle Programme, die den Systemproxy beachten. Eine einzelne Verbindung läuft immer über einen Weg; viele gleichzeitige verteilen sich. Adressen im LAN gehen direkt. Solange der Proxy an ist, startet Bondr bei der Anmeldung mit, sonst hätte der Browser nach einem Neustart kein Internet.
 
+**Programme ohne Proxy (nur Windows).** Steam und manche andere Launcher laden am Windows-Proxy vorbei. Mit „Auch Programme ohne Proxy verteilen“ fängt Bondr die Verbindungen der eingetragenen Programme (Vorgabe `steam.exe`) mit [WinDivert](https://github.com/basil00/WinDivert) ab und gibt sie über den eigenen Proxy weiter, so verteilen sich auch deren viele gleichzeitige Downloads auf alle Hauptwege. Das braucht Adminrechte: beim ersten Einschalten fragt Windows einmal, Bondr legt dabei die geplante Aufgabe „Bondr Umleitung“ an und startet den Umleiter danach ohne Rückfrage. Er endet, sobald die Umleitung aus ist oder Bondr beendet wird. Nur IPv4, nur Ziele im Internet.
+
 **Downloads.** Eine Datei kommt in Abschnitten gleichzeitig über die Hauptwege, je Weg so viele Verbindungen, wie das Gewicht hergibt; freie Verbindungen übernehmen die hintere Hälfte des größten offenen Abschnitts. Hier addiert sich die Bandbreite auch für eine einzelne Datei.
 
 Echtes Bündeln einer einzelnen Verbindung braucht einen Server auf der anderen Seite (MPTCP, Speedify); das macht Bondr nicht.
@@ -65,4 +67,4 @@ Releases baut GitHub Actions bei jedem Tag `v*`.
 
 ## Lizenz
 
-MIT
+MIT. Der Windows-Installer enthält WinDivert 2.2.2 (LGPL 3 oder GPL 2, `WinDivert-LIZENZ.txt`).

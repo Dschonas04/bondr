@@ -34,6 +34,10 @@ type Werte struct {
 	Strategie   string           `json:"strategie"`
 	Regeln      map[string]Regel `json:"regeln"` // Schlüssel: Adaptername
 	Ordner      string           `json:"ordner"`
+	// Umleitung fängt unter Windows die Verbindungen der Programme ab (WinDivert), auch
+	// wenn sie den Windows-Proxy nicht beachten.
+	Umleitung bool     `json:"umleitung"`
+	Programme []string `json:"programme"`
 }
 
 // Vorgabe liefert die Regel für einen Adapter, für den nichts eingestellt ist: Kabel und
@@ -83,6 +87,9 @@ func Laden() *Speicher {
 	if s.w.Regeln == nil {
 		s.w.Regeln = map[string]Regel{}
 	}
+	if s.w.Programme == nil {
+		s.w.Programme = []string{"steam.exe"}
+	}
 	return s
 }
 
@@ -95,6 +102,7 @@ func (s *Speicher) Werte() Werte {
 	for k, v := range s.w.Regeln {
 		w.Regeln[k] = v
 	}
+	w.Programme = append([]string(nil), s.w.Programme...)
 	return w
 }
 

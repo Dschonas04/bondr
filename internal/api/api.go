@@ -16,6 +16,7 @@ import (
 	"github.com/Dschonas04/bondr/internal/einstellungen"
 	"github.com/Dschonas04/bondr/internal/laden"
 	"github.com/Dschonas04/bondr/internal/system"
+	"github.com/Dschonas04/bondr/internal/umleitung"
 	"github.com/Dschonas04/bondr/internal/verteiler"
 )
 
@@ -55,6 +56,7 @@ func (a *API) Handler() http.Handler {
 	m.HandleFunc("POST /laden", a.laden)
 	m.HandleFunc("POST /abbrechen", a.abbrechen)
 	m.HandleFunc("POST /ordner", a.ordner)
+	m.HandleFunc("POST /umleitung", a.umleitung)
 	m.HandleFunc("POST /beenden", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		go a.Beenden()
@@ -116,6 +118,7 @@ func (a *API) stand(w http.ResponseWriter, r *http.Request) {
 		"mbit_raus":    raus,
 		"wege":         wege,
 		"downloads":    dl,
+		"umleitung":    umleitung.Stand(e),
 	})
 }
 
@@ -226,5 +229,30 @@ func (a *API) ordner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.E.Aendern(func(v *einstellungen.Werte) { v.Ordner = strings.TrimSpace(q.Ordner) })
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *API) umleitung(w http.ResponseWriter, r *http.Request) {
+	var q struct {
+		An        bool    `json:"an"`
+		Programme *string `json:"programme"`
+	}
+	if !lesen(w, r, &q) {
+		return
+	}
+	var liste []string
+	if q.Programme != nil {
+		liste = umleitung.Programme(*q.Programme)
+		if len(liste) == 0 {
+			http.Error(w, "Mindestens ein Programm angeben, z. B. steam.exe", http.StatusBadRequest)
+			return
+		}
+	}
+	a.E.Aendern(func(v *einstellungen.Werte) {
+		v.Umleitung = q.An
+		if liste != nil {
+			v.Programme = liste
+		}
+	})
 	w.WriteHeader(http.StatusNoContent)
 }
