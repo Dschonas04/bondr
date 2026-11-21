@@ -358,7 +358,7 @@ func (l *Lader) inStuecken(ctx context.Context, a *Auftrag, f *os.File, pfade []
 					if ctx.Err() != nil {
 						return
 					}
-					log.Printf("Abschnitt über %s: %v", p.Name, err)
+					log.Printf("Abschnitt über %s: %v", p.Name, ohneURL(err))
 					warten := time.Second
 					var b *bremse
 					if errors.As(err, &b) {
@@ -453,6 +453,16 @@ func (l *Lader) holen(ctx context.Context, a *Auftrag, c *http.Client, p *vertei
 			return err
 		}
 	}
+}
+
+// ohneURL entfernt die Adresse aus Fehlern, damit Schlüssel in der Abfrage
+// (signierte Links) nicht im Protokoll landen.
+func ohneURL(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return fmt.Errorf("%s: %w", ue.Op, ue.Err)
+	}
+	return err
 }
 
 // bremse heißt: Server meldet 429 oder 503, später noch einmal versuchen.
