@@ -13,8 +13,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
-      id-token: write
-      attestations: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -34,9 +32,6 @@ jobs:
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -H windowsgui -X main.Version=${fassung}" -o dist/Bondr.exe ./cmd/bondr
           CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "-s -w -H windowsgui -X main.Version=${fassung}" -o dist/Bondr-arm64.exe ./cmd/bondr
           (cd dist && sha256sum * > pruefsummen.txt)
-      - uses: actions/attest-build-provenance@v3
-        with:
-          subject-path: dist/*.exe
       - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
