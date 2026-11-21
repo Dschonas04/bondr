@@ -1,37 +1,37 @@
 # Bondr
 
-Bondr nutzt alle Internetzugänge eines Windows-Rechners gleichzeitig: Kabel, WLAN und das Handy per USB-Tethering.
+Bondr nutzt alle Internetzugänge eines Windows-Rechners gleichzeitig: Kabel, WLAN und das Handy per USB-Tethering. Ein Windows-Programm mit eigenem Fenster und Symbol im Infobereich, ohne Installation und ohne Zusatzsoftware (.NET Framework 4.8 ist in Windows 10 und 11 enthalten).
 
 ## Was es macht
 
-**Datei laden.** Eine Datei wird in Stücke von 4 MiB geteilt, die gleichzeitig über alle Wege geholt werden. Hier addiert sich die Bandbreite auch für einen einzelnen Download. Bremst der Server (429/503), nimmt Bondr Anfragen zurück und versucht es später wieder; hängt ein Weg, übernimmt ein anderer das Stück.
+**Datei laden.** Eine Datei wird in Abschnitte geteilt, die gleichzeitig über alle Wege kommen; hier addiert sich die Bandbreite auch für einen einzelnen Download. Je Weg laufen drei lange Verbindungen. Wird eine frei, übernimmt sie die hintere Hälfte des größten offenen Abschnitts, so bremst der langsamere Weg am Ende nicht. Antwortet der Server mit 429 oder 503, nimmt Bondr Verbindungen zurück.
 
-**Programme verteilen.** Bondr ist ein lokaler Proxy (SOCKS5 und HTTP auf `127.0.0.1:1080`). Mit dem Schalter „Windows-Proxy“ benutzen ihn Browser und alle Programme, die den Windows-Proxy beachten. Jede neue Verbindung geht über den Weg, der gerade am wenigsten zu tun hat, gemessen an dem, was er zuletzt geschafft hat. Eine einzelne Verbindung wird dabei nicht schneller, viele gleichzeitige schon (Webseiten, Steam, Updates). Adressen im lokalen Netz (10.x, 192.168.x, .local, .fritz.box) gehen am Proxy vorbei.
+**Programme verteilen.** Bondr ist ein lokaler Proxy (SOCKS5 und HTTP auf `127.0.0.1:1080`). Mit „Windows-Proxy verwenden“ benutzen ihn Browser und alle Programme, die den Windows-Proxy beachten. Jede neue Verbindung geht über den Weg, der gerade am wenigsten zu tun hat. Eine einzelne Verbindung wird dadurch nicht schneller, viele gleichzeitige schon. Adressen im LAN (10.x, 192.168.x, .local, .fritz.box) gehen direkt.
 
 Echtes Bündeln einer einzelnen Verbindung braucht einen Server auf der anderen Seite (wie Speedify oder MPTCP); das macht Bondr nicht.
 
 ## Bedienung
 
-`Bondr.exe` starten, die Oberfläche öffnet sich im Browser unter `http://127.0.0.1:8765`. Dort:
+- Fenster schließen legt Bondr in den Infobereich, beenden über „Beenden“ oder das Symbol.
+- Haken bei einem Weg entfernen, um ihn nicht zu benutzen.
+- Ist der Windows-Proxy an, trägt sich Bondr in den Autostart ein (startet dann still im Infobereich), damit der Browser nach einem Neustart weiter Internet hat. Beim Beenden schaltet Bondr den Proxy ab.
+- Einstellungen unter `HKCU\Software\Bondr`, Protokoll in `%APPDATA%\Bondr\bondr.log`.
 
-- Wege mit aktueller Rate ein- und ausschalten
-- Windows-Proxy an oder aus
-- Download-Adresse eingeben
-
-Ist der Windows-Proxy an, trägt sich Bondr in den Autostart ein, damit der Browser nach einem Neustart weiter Internet hat. Beim Beenden schaltet Bondr den Proxy ab.
-
-Einstellungen und Protokoll liegen in `%APPDATA%\Bondr`.
+Für Messungen ohne Fenster: `Bondr.exe --messen <URL> <Ordner>` schreibt `messung.txt` in den Ordner.
 
 ## Wie die Wege gebunden werden
 
-Jede ausgehende Verbindung wird an die Adresse des Adapters gebunden und bekommt zusätzlich `IP_UNICAST_IF`, damit Windows sie wirklich über diesen Adapter schickt, auch wenn die Routentabelle einen anderen bevorzugt. Adapter werden alle 3 Sekunden neu erkannt, ein eingestecktes Handy taucht also von selbst auf.
+Jede ausgehende Verbindung wird an die Adresse des Adapters gebunden und bekommt `IP_UNICAST_IF`, damit Windows sie wirklich über diesen Adapter schickt. Downloads laufen über einen eigenen kleinen HTTP/1.1-Client, weil die eingebauten Klassen Verbindungen je Server teilen und sich nicht pro Anfrage an einen Adapter binden lassen. Adapter werden alle 3 Sekunden neu erkannt.
 
 ## Bauen
 
+Unter Windows, ohne Visual Studio, mit dem C#-Compiler aus dem .NET Framework:
+
 ```
-CGO_ENABLED=0 GOOS=windows go build -trimpath -ldflags "-s -w -H windowsgui" -o Bondr.exe ./cmd/bondr
-go test ./...
+bauen.cmd
 ```
+
+Ergebnis: `dist\Bondr.exe`.
 
 ## Lizenz
 
