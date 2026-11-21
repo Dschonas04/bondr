@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime"
 	"net"
 	"net/http"
@@ -25,8 +26,9 @@ import (
 )
 
 const (
-	stueck       = 4 << 20          // 4 MiB je Anfrage
-	jeWeg        = 4                // gleichzeitige Anfragen je Weg
+	stueck       = 4 << 20          // kleinere Dateien in einem Stück
+	minTeil      = 1 << 20          // kleiner wird kein Abschnitt geteilt
+	jeWeg        = 3                // gleichzeitige Verbindungen je Weg
 	fehlerProWeg = 5                // danach hört ein Weg für diesen Download auf
 	stillstand   = 20 * time.Second // ohne neue Daten so lange, dann neu versuchen
 )
@@ -249,13 +251,75 @@ func (l *Lader) amStueck(ctx context.Context, a *Auftrag, f *os.File, p *verteil
 	return err
 }
 
-func (l *Lader) inStuecken(ctx context.Context, a *Auftrag, f *os.File, pfade []*verteiler.Pfad, u *url.URL, groesse int64) error {
-	anzahl := int((groesse + stueck - 1) / stueck)
-	offen := make(chan int, anzahl)
-	for i := 0; i < anzahl; i++ {
-		offen <- i
+// abschnitt ist ein Bereich [pos, ende) der Datei. Eine Verbindung liest ihn von vorn;
+// wird ein anderer Weg frei, nimmt er sich die hintere Hälfte (ende wird verkürzt).
+type abschnitt struct {
+	pos, ende int64
+	belegt    bool
+}
+
+type plan struct {
+	mu        sync.Mutex
+	teile     []*abschnitt
+	geaendert chan struct{}
+}
+
+// nehmen liefert einen freien Abschnitt oder teilt den größten laufenden.
+func (pl *plan) nehmen() *abschnitt {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+	var groesster *abschnitt
+	for _, t := range pl.teile {
+		if t.pos >= t.ende {
+			continue
+		}
+		if !t.belegt {
+			t.belegt = true
+			return t
+		}
+		if groesster == nil || t.ende-t.pos > groesster.ende-groesster.pos {
+			groesster = t
+		}
 	}
-	var fertig atomic.Int64
+	if groesster == nil || groesster.ende-groesster.pos < 2*minTeil {
+		return nil
+	}
+	mitte := groesster.pos + (groesster.ende-groesster.pos)/2
+	n := &abschnitt{pos: mitte, ende: groesster.ende, belegt: true}
+	groesster.ende = mitte
+	pl.teile = append(pl.teile, n)
+	return n
+}
+
+func (pl *plan) freigeben(t *abschnitt) {
+	pl.mu.Lock()
+	t.belegt = false
+	pl.mu.Unlock()
+}
+
+func (pl *plan) fertig() bool {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+	for _, t := range pl.teile {
+		if t.pos < t.ende {
+			return false
+		}
+	}
+	return true
+}
+
+func (l *Lader) inStuecken(ctx context.Context, a *Auftrag, f *os.File, pfade []*verteiler.Pfad, u *url.URL, groesse int64) error {
+	// Anfangs ein Abschnitt je Verbindung; danach teilen sich freie Verbindungen
+	// die Arbeit der langsamen. So bleibt die Zahl der Anfragen klein, was Server
+	// mit Anfragebegrenzung (429) schont.
+	verbindungen := len(pfade) * jeWeg
+	anfang := int(min(int64(verbindungen), max(1, groesse/minTeil)))
+	pl := &plan{}
+	for i := 0; i < anfang; i++ {
+		von := groesse * int64(i) / int64(anfang)
+		bis := groesse * int64(i+1) / int64(anfang)
+		pl.teile = append(pl.teile, &abschnitt{pos: von, ende: bis})
+	}
 	var wg sync.WaitGroup
 	var fehlerMu sync.Mutex
 	var letzter error
@@ -271,37 +335,36 @@ func (l *Lader) inStuecken(ctx context.Context, a *Auftrag, f *os.File, pfade []
 			go func(p *verteiler.Pfad) {
 				defer wg.Done()
 				defer aktiv.Add(-1)
-				for {
-					if fehlschlaege.Load() >= fehlerProWeg {
-						return
-					}
-					var i int
-					select {
-					case <-ctx.Done():
-						return
-					case i = <-offen:
-					case <-time.After(200 * time.Millisecond):
-						// leer, aber ein anderer kann ein Stück zurücklegen
-						continue
-					}
-					von := int64(i) * stueck
-					bis := min(von+stueck, groesse) - 1
-					err := l.holen(ctx, a, c, p, u, f, von, bis)
-					if err == nil {
-						if fertig.Add(1) == int64(anzahl) {
+				for ctx.Err() == nil && fehlschlaege.Load() < fehlerProWeg {
+					t := pl.nehmen()
+					if t == nil {
+						if pl.fertig() {
 							stopp()
+							return
+						}
+						select {
+						case <-ctx.Done():
+							return
+						case <-time.After(200 * time.Millisecond):
 						}
 						continue
 					}
-					offen <- i // ein anderer übernimmt
+					err := l.holen(ctx, a, c, p, u, f, pl, t)
+					pl.freigeben(t)
+					if err == nil {
+						fehlschlaege.Store(0)
+						continue
+					}
+					if ctx.Err() != nil {
+						return
+					}
+					log.Printf("Abschnitt über %s: %v", p.Name, err)
 					warten := time.Second
 					var b *bremse
 					if errors.As(err, &b) {
-						// Der Server will weniger gleichzeitige Anfragen: diese Anfrage
-						// hört auf, solange der Weg noch eine andere hat.
 						warten = b.warten
 						if aktiv.Load() > 1 {
-							return
+							return // Server will weniger gleichzeitige Anfragen
 						}
 					} else {
 						fehlschlaege.Add(1)
@@ -319,7 +382,7 @@ func (l *Lader) inStuecken(ctx context.Context, a *Auftrag, f *os.File, pfade []
 		}
 	}
 	wg.Wait()
-	if fertig.Load() == int64(anzahl) {
+	if pl.fertig() {
 		return nil
 	}
 	if letzter == nil {
@@ -328,12 +391,16 @@ func (l *Lader) inStuecken(ctx context.Context, a *Auftrag, f *os.File, pfade []
 	return letzter
 }
 
-func (l *Lader) holen(ctx context.Context, a *Auftrag, c *http.Client, p *verteiler.Pfad, u *url.URL, f *os.File, von, bis int64) error {
-	// Kommt 20 s lang nichts, wird die Anfrage abgebrochen und das Stück neu verteilt.
+// holen liest einen Abschnitt ab t.pos, bis t.ende erreicht ist (das sich beim
+// Teilen verkürzen kann). Bei Fehlern bleibt t.pos stehen, der Rest wird neu geholt.
+func (l *Lader) holen(ctx context.Context, a *Auftrag, c *http.Client, p *verteiler.Pfad, u *url.URL, f *os.File, pl *plan, t *abschnitt) error {
 	ctx, abbruch := context.WithCancel(ctx)
 	defer abbruch()
 	wache := time.AfterFunc(stillstand, abbruch)
 	defer wache.Stop()
+	pl.mu.Lock()
+	von, bis := t.pos, t.ende-1
+	pl.mu.Unlock()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", von, bis))
 	req.Header.Set("User-Agent", "Bondr/1")
@@ -353,36 +420,39 @@ func (l *Lader) holen(ctx context.Context, a *Auftrag, c *http.Client, p *vertei
 		return fmt.Errorf("Server antwortet %s statt Teilinhalt", antw.Status)
 	}
 	w := a.anteil(p.Name)
-	pos := von
 	puffer := make([]byte, 256<<10)
-	for pos <= bis {
+	for {
 		n, err := antw.Body.Read(puffer)
 		if n > 0 {
 			wache.Reset(stillstand)
-			if int64(n) > bis-pos+1 {
-				n = int(bis - pos + 1)
+			pl.mu.Lock()
+			pos, ende := t.pos, t.ende
+			pl.mu.Unlock()
+			if int64(n) > ende-pos {
+				n = int(max(0, ende-pos))
 			}
-			if _, e := f.WriteAt(puffer[:n], pos); e != nil {
-				return e
+			if n > 0 {
+				if _, e := f.WriteAt(puffer[:n], pos); e != nil {
+					return e
+				}
+				pl.mu.Lock()
+				t.pos += int64(n)
+				pos, ende = t.pos, t.ende
+				pl.mu.Unlock()
+				a.geladen.Add(int64(n))
+				w.Add(int64(n))
 			}
-			pos += int64(n)
-			a.geladen.Add(int64(n))
-			w.Add(int64(n))
+			if pos >= ende {
+				return nil // fertig, oder ein anderer hat den Rest übernommen
+			}
 		}
 		if err != nil {
-			if err == io.EOF && pos > bis {
-				break
-			}
-			// unvollständiges Stück zurücknehmen, es wird ganz neu geholt
-			a.geladen.Add(-(pos - von))
-			w.Add(-(pos - von))
 			if err == io.EOF {
 				return io.ErrUnexpectedEOF
 			}
 			return err
 		}
 	}
-	return nil
 }
 
 // bremse heißt: Server meldet 429 oder 503, später noch einmal versuchen.
