@@ -1,0 +1,44 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - name: bauen
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          fassung="${TAG#v}"
+          case "$fassung" in [0-9]*.[0-9]*.[0-9]*) : ;; *) echo "Tag $TAG passt nicht"; exit 1 ;; esac
+          go test ./...
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -H windowsgui -X main.Version=${fassung}" -o dist/Bondr.exe ./cmd/bondr
+          CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "-s -w -H windowsgui -X main.Version=${fassung}" -o dist/Bondr-arm64.exe ./cmd/bondr
+          (cd dist && sha256sum * > pruefsummen.txt)
+      - uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: dist/*.exe
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
