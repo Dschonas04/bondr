@@ -3,8 +3,10 @@ package einstellungen
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 )
 
@@ -123,15 +125,26 @@ func (s *Speicher) Strategie() string {
 	return s.w.Strategie
 }
 
-// Aendern wendet f an und speichert.
-func (s *Speicher) Aendern(f func(*Werte)) error {
+// Aendern wendet f an und speichert. Scheitert das Speichern, gilt weiter das Alte.
+func (s *Speicher) Aendern(f func(*Werte)) (fehler error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	vorher := s.w
+	vorher.Regeln = maps.Clone(s.w.Regeln)
+	vorher.Programme = slices.Clone(s.w.Programme)
+	defer func() {
+		if fehler != nil {
+			s.w = vorher
+		}
+	}()
 	f(&s.w)
 	if err := os.MkdirAll(filepath.Dir(s.datei), 0o755); err != nil {
 		return err
 	}
-	b, _ := json.MarshalIndent(s.w, "", "  ")
+	b, err := json.MarshalIndent(s.w, "", "  ")
+	if err != nil {
+		return err
+	}
 	tmp := s.datei + ".neu"
 	if err := os.WriteFile(tmp, b, 0o644); err != nil {
 		return err

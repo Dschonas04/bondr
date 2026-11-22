@@ -91,6 +91,14 @@ func lesen(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 
+func (a *API) speichern(w http.ResponseWriter, f func(*einstellungen.Werte)) {
+	if err := a.E.Aendern(f); err != nil {
+		http.Error(w, "Nicht gespeichert: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (a *API) stand(w http.ResponseWriter, r *http.Request) {
 	e := a.E.Werte()
 	wege := a.V.Stand()
@@ -141,10 +149,9 @@ func (a *API) regel(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Name fehlt oder Gewicht nicht zwischen 1 und 10", http.StatusBadRequest)
 		return
 	}
-	a.E.Aendern(func(v *einstellungen.Werte) {
+	a.speichern(w, func(v *einstellungen.Werte) {
 		v.Regeln[q.Name] = einstellungen.Regel{Gewicht: q.Gewicht, Rolle: q.Rolle}
 	})
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *API) strategie(w http.ResponseWriter, r *http.Request) {
@@ -160,8 +167,7 @@ func (a *API) strategie(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unbekannte Strategie", http.StatusBadRequest)
 		return
 	}
-	a.E.Aendern(func(v *einstellungen.Werte) { v.Strategie = q.Strategie })
-	w.WriteHeader(http.StatusNoContent)
+	a.speichern(w, func(v *einstellungen.Werte) { v.Strategie = q.Strategie })
 }
 
 // SystemproxySchalten setzt den Systemproxy und merkt sich die Einstellung.
@@ -225,11 +231,15 @@ func (a *API) ordner(w http.ResponseWriter, r *http.Request) {
 	var q struct {
 		Ordner string `json:"ordner"`
 	}
-	if !lesen(w, r, &q) || strings.TrimSpace(q.Ordner) == "" {
+	if !lesen(w, r, &q) {
 		return
 	}
-	a.E.Aendern(func(v *einstellungen.Werte) { v.Ordner = strings.TrimSpace(q.Ordner) })
-	w.WriteHeader(http.StatusNoContent)
+	ordner := strings.TrimSpace(q.Ordner)
+	if ordner == "" {
+		http.Error(w, "Ordner fehlt", http.StatusBadRequest)
+		return
+	}
+	a.speichern(w, func(v *einstellungen.Werte) { v.Ordner = ordner })
 }
 
 func (a *API) umleitung(w http.ResponseWriter, r *http.Request) {
@@ -248,11 +258,10 @@ func (a *API) umleitung(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a.E.Aendern(func(v *einstellungen.Werte) {
+	a.speichern(w, func(v *einstellungen.Werte) {
 		v.Umleitung = q.An
 		if liste != nil {
 			v.Programme = liste
 		}
 	})
-	w.WriteHeader(http.StatusNoContent)
 }

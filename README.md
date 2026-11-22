@@ -1,4 +1,13 @@
-# Bondr
+<p align="center"><img src="docs/logo.svg" width="76" alt=""></p>
+<h1 align="center">Bondr</h1>
+<p align="center">Alle Internetzugänge eines Rechners gleichzeitig.</p>
+
+| | Windows 10/11 | macOS 14+ |
+|---|---|---|
+| Lastverteiler mit Gewicht, Reserve und Gesundheitsprüfung | ja | ja |
+| Programme, die den Systemproxy beachten | ja | ja |
+| Programme ohne Proxy, etwa Steam | ja | nein |
+| Downloads über mehrere Wege zugleich | ja | ja |
 
 Bondr nutzt alle Internetzugänge eines Rechners gleichzeitig, wie ein Lastverteiler: Kabel, WLAN, Handy per USB oder ein zweiter Router. Für Windows 10/11 und macOS 14+ (Apple Silicon wie M4 und Intel).
 
@@ -60,10 +69,10 @@ makensis windows/installer.nsi
 # macOS (mit Xcode):
 GOOS=darwin GOARCH=arm64 go build -o mac/kern/bondrd-arm64 ./cmd/bondrd
 GOOS=darwin GOARCH=amd64 go build -o mac/kern/bondrd-amd64 ./cmd/bondrd
-mac/bauen.sh 3.0.0
+mac/bauen.sh <Fassung>      # z. B. 3.1.0
 ```
 
-Releases baut GitHub Actions bei jedem Tag `v*`.
+Jeder Push wird geprüft und gebaut, Releases entstehen bei jedem Tag `v*`. Was sich ändert, steht im [CHANGELOG](CHANGELOG.md).
 
 ## Lizenz
 
