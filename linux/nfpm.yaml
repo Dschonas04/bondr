@@ -1,4 +1,5 @@
-# Baut .deb und .rpm: FASSUNG und ARCH (amd64, arm64) kommen aus der Umgebung.
+# Baut .deb und .rpm: FASSUNG und ARCH (amd64, arm64) kommen aus der Umgebung,
+# der Kern liegt für die gerade gebaute Architektur unter ../bau/bondrd.
 name: bondr
 arch: ${ARCH}
 platform: linux
@@ -12,7 +13,7 @@ description: |
 homepage: https://github.com/Dschonas04/bondr
 license: MIT
 contents:
-  - src: ../bau/bondrd-${ARCH}
+  - src: ../bau/bondrd
     dst: /usr/lib/bondr/bondrd
     file_info: {mode: 0755}
   - src: bondr.py
