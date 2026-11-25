@@ -2,14 +2,14 @@
 <h1 align="center">Bondr</h1>
 <p align="center">Alle Internetzugänge eines Rechners gleichzeitig.</p>
 
-| | Windows 10/11 | macOS 14+ |
-|---|---|---|
-| Lastverteiler mit Gewicht, Reserve und Gesundheitsprüfung | ja | ja |
-| Programme, die den Systemproxy beachten | ja | ja |
-| Programme ohne Proxy, etwa Steam | ja | nein |
-| Downloads über mehrere Wege zugleich | ja | ja |
+| | Windows 10/11 | macOS 14+ | Linux |
+|---|---|---|---|
+| Lastverteiler mit Gewicht, Reserve und Gesundheitsprüfung | ja | ja | ja |
+| Programme, die den Systemproxy beachten | ja | ja | GNOME, KDE |
+| Programme ohne Proxy, etwa Steam | ja | nein | nein |
+| Downloads über mehrere Wege zugleich | ja | ja | ja |
 
-Bondr nutzt alle Internetzugänge eines Rechners gleichzeitig, wie ein Lastverteiler: Kabel, WLAN, Handy per USB oder ein zweiter Router. Für Windows 10/11 und macOS 14+ (Apple Silicon wie M4 und Intel).
+Bondr nutzt alle Internetzugänge eines Rechners gleichzeitig, wie ein Lastverteiler: Kabel, WLAN, Handy per USB oder ein zweiter Router. Für Windows 10/11, macOS 14+ (Apple Silicon wie M4 und Intel) und Linux (x86_64 und ARM64).
 
 ## Wie ein nginx-Upstream
 
@@ -45,6 +45,7 @@ Echtes Bündeln einer einzelnen Verbindung braucht einen Server auf der anderen 
 
 - **Windows:** `Bondr-<Fassung>-Setup.exe` aus den Releases. Installiert für den angemeldeten Benutzer (ohne Adminrechte) nach `%LOCALAPPDATA%\Programs\Bondr`, mit Startmenü-Eintrag und Deinstallation über „Apps“.
 - **macOS:** `Bondr-<Fassung>-mac.dmg` öffnen und Bondr in „Programme“ ziehen. Bondr sitzt in der Menüleiste. Die App ist nur ad-hoc signiert: beim ersten Start Rechtsklick, „Öffnen“.
+- **Linux:** Debian/Ubuntu `sudo apt install ./bondr_<Fassung>_amd64.deb`, Fedora/openSUSE `sudo dnf install ./bondr-<Fassung>-1.x86_64.rpm`. Sonst `Bondr-<Fassung>-linux-<arch>.tar.gz` entpacken und `./installieren.sh` (für den Benutzer, ohne root; braucht Python 3 mit PyGObject, GTK 4 und libadwaita 1.2+). Das Fenster schließen lässt Bondr weiterlaufen, „Beenden“ steht im Menü. Der Systemproxy wird in GNOME (auch Cinnamon, Budgie) und KDE gesetzt; Firefox und Chrome folgen ihm.
 
 ## Aufbau
 
@@ -53,10 +54,11 @@ Echtes Bündeln einer einzelnen Verbindung braucht einen Server auf der anderen 
 | Kern `bondrd`: Lastverteiler, Proxy, Downloader, Steuerung auf 127.0.0.1:47801 | `cmd/`, `internal/` | Go |
 | Windows-App mit Infobereich, Installer | `windows/` | C# (WinForms, .NET Framework 4.8), NSIS |
 | Mac-App in der Menüleiste | `mac/` | Swift (SwiftUI) |
+| Linux-App, Pakete .deb/.rpm | `linux/` | Python (GTK 4, libadwaita), nfpm |
 
-Die Apps starten den Kern und steuern ihn; die Steuerung verlangt einen Schlüssel aus einer nur für den Benutzer lesbaren Datei. Jede ausgehende Verbindung wird an ihren Adapter gebunden (`IP_UNICAST_IF` unter Windows, `IP_BOUND_IF` unter macOS).
+Die Apps starten den Kern und steuern ihn; die Steuerung verlangt einen Schlüssel aus einer nur für den Benutzer lesbaren Datei. Jede ausgehende Verbindung wird an ihren Adapter gebunden (`IP_UNICAST_IF` unter Windows, `IP_BOUND_IF` unter macOS, `SO_BINDTODEVICE` unter Linux, ab Kernel 5.7 ohne root).
 
-Einstellungen: `%APPDATA%\Bondr\einstellungen.json` bzw. `~/Library/Application Support/Bondr/einstellungen.json`.
+Einstellungen: `%APPDATA%\Bondr\einstellungen.json`, `~/Library/Application Support/Bondr/einstellungen.json` bzw. `~/.config/Bondr/einstellungen.json`.
 
 ## Bauen
 
@@ -70,6 +72,8 @@ makensis windows/installer.nsi
 GOOS=darwin GOARCH=arm64 go build -o mac/kern/bondrd-arm64 ./cmd/bondrd
 GOOS=darwin GOARCH=amd64 go build -o mac/kern/bondrd-amd64 ./cmd/bondrd
 mac/bauen.sh <Fassung>      # z. B. 3.1.0
+# Linux:
+go build -o linux/bondrd ./cmd/bondrd && linux/bondr.py
 ```
 
 Jeder Push wird geprüft und gebaut, Releases entstehen bei jedem Tag `v*`. Was sich ändert, steht im [CHANGELOG](CHANGELOG.md).

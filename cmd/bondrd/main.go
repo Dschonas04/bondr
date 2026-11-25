@@ -1,5 +1,5 @@
 // bondrd ist der Kern von Bondr: Lastverteiler über alle Internetzugänge, lokaler Proxy
-// und Downloader. Die Apps für Windows und macOS starten ihn und steuern ihn über eine
+// und Downloader. Die Apps für Windows, macOS und Linux starten ihn und steuern ihn über eine
 // lokale Schnittstelle.
 package main
 

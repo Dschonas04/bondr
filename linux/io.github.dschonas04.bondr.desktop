@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Bondr
+Comment=Alle Internetzugänge gleichzeitig nutzen, wie ein Lastverteiler
+Exec=bondr
+Icon=io.github.dschonas04.bondr
+Terminal=false
+Categories=Network;Utility;
+Keywords=Lastverteiler;Proxy;Download;WLAN;Tethering;
+StartupNotify=true

@@ -24,6 +24,7 @@ jobs:
       - run: GOOS=windows go vet ./...
       - run: GOOS=darwin GOARCH=arm64 go vet ./...
       - run: go test -race ./...
+      - run: python3 -m py_compile linux/bondr.py
 
   windows:
     needs: pruefen
@@ -97,8 +98,43 @@ jobs:
           name: mac
           path: mac/bau/Bondr-*-mac.dmg
 
+  linux:
+    needs: pruefen
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - name: bauen
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          f="${REF#v}"
+          case "$f" in [0-9]*.[0-9]*.[0-9]*) : ;; *) f="0.0.0" ;; esac
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.41.0
+          mkdir -p bau aus
+          for a in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=$a go build -trimpath -ldflags "-s -w -X main.Version=$f" -o bau/bondrd-$a ./cmd/bondrd
+            (cd linux && for p in deb rpm; do FASSUNG=$f ARCH=$a nfpm pkg -f nfpm.yaml -p $p -t ../aus/; done)
+            d=bau/Bondr-$f-linux-$a
+            mkdir -p $d
+            cp bau/bondrd-$a $d/bondrd
+            cp linux/bondr.py linux/installieren.sh linux/io.github.dschonas04.bondr.desktop LICENSE $d/
+            cp docs/logo.svg $d/io.github.dschonas04.bondr.svg
+            tar -C bau -czf aus/Bondr-$f-linux-$a.tar.gz Bondr-$f-linux-$a
+          done
+          ls -la aus
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux
+          path: aus/*
+
   veroeffentlichen:
-    needs: [windows, mac]
+    needs: [windows, mac, linux]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:

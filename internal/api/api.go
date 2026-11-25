@@ -1,4 +1,4 @@
-// Paket api ist die lokale Steuerung für die Apps (Windows und Mac). Sie lauscht nur auf
+// Paket api ist die lokale Steuerung für die Apps (Windows, Mac, Linux). Sie lauscht nur auf
 // 127.0.0.1 und verlangt einen Schlüssel, der in einer nur für den Nutzer lesbaren Datei
 // liegt; fremde Programme oder Webseiten können Bondr so nicht umschalten.
 package api

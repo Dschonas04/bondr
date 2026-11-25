@@ -3,3 +3,6 @@ windows/dist/
 mac/bau/
 mac/kern/
 *.exe
+bau/
+aus/
+__pycache__/

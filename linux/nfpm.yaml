@@ -1,0 +1,34 @@
+# Baut .deb und .rpm: FASSUNG und ARCH (amd64, arm64) kommen aus der Umgebung.
+name: bondr
+arch: ${ARCH}
+platform: linux
+version: ${FASSUNG}
+section: net
+priority: optional
+maintainer: Dschonas04 <200050623+Dschonas04@users.noreply.github.com>
+description: |
+  Alle Internetzugänge eines Rechners gleichzeitig, wie ein Lastverteiler:
+  Kabel, WLAN, Handy per USB. Lokaler Proxy (SOCKS5/HTTP) und Downloader.
+homepage: https://github.com/Dschonas04/bondr
+license: MIT
+contents:
+  - src: ../bau/bondrd-${ARCH}
+    dst: /usr/lib/bondr/bondrd
+    file_info: {mode: 0755}
+  - src: bondr.py
+    dst: /usr/lib/bondr/bondr.py
+    file_info: {mode: 0755}
+  - src: /usr/lib/bondr/bondr.py
+    dst: /usr/bin/bondr
+    type: symlink
+  - src: io.github.dschonas04.bondr.desktop
+    dst: /usr/share/applications/io.github.dschonas04.bondr.desktop
+  - src: ../docs/logo.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/io.github.dschonas04.bondr.svg
+  - src: ../LICENSE
+    dst: /usr/share/doc/bondr/copyright
+overrides:
+  deb:
+    depends: [python3, python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1]
+  rpm:
+    depends: [python3, python3-gobject, gtk4, libadwaita]
