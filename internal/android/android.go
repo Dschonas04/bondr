@@ -1,4 +1,4 @@
-//go:build unix
+//go:build linux
 
 // Paket android spricht mit der Android-App über einen Unix-Socket im abstrakten
 // Namensraum. Nur die App darf Sockets an ein Netz (WLAN, Mobilfunk) binden
@@ -11,9 +11,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"sync"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // Name des Sockets der App, "@" steht für den abstrakten Namensraum.
@@ -36,6 +39,12 @@ func verbinden() (*net.UnixConn, error) {
 	c, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: Name, Net: "unix"})
 	if err != nil {
 		return nil, fmt.Errorf("App nicht erreichbar: %w", err)
+	}
+	// Der Name im abstrakten Namensraum ist global: nur die eigene App (gleicher Benutzer)
+	// darf Sockets und den Tunnel bekommen
+	if err := eigenerBenutzer(c); err != nil {
+		c.Close()
+		return nil, err
 	}
 	verb = c
 	return c, nil
@@ -89,6 +98,27 @@ func anfrage(befehl byte, wert uint32, fd int) (int, error) {
 		return -1, nil
 	}
 	return -1, errors.New("App nicht erreichbar")
+}
+
+func eigenerBenutzer(c *net.UnixConn) error {
+	rc, err := c.SyscallConn()
+	if err != nil {
+		return err
+	}
+	var cred *unix.Ucred
+	var fehler error
+	if err := rc.Control(func(fd uintptr) {
+		cred, fehler = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
+	}); err != nil {
+		return err
+	}
+	if fehler != nil {
+		return fmt.Errorf("Gegenstelle nicht prüfbar: %w", fehler)
+	}
+	if int(cred.Uid) != os.Getuid() {
+		return fmt.Errorf("fremde App (Benutzer %d) am Socket %s", cred.Uid, Name)
+	}
+	return nil
 }
 
 // Binden bindet den Socket fd an das Netz mit der Kennung netz (Network.toString()).

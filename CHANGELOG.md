@@ -1,5 +1,9 @@
 # Änderungen
 
+## 3.3.1
+
+- Android: Der Kern prüft, dass am App-Socket wirklich die eigene App antwortet (gleicher Benutzer), bevor er Sockets oder den Tunnel austauscht.
+
 ## 3.3.0
 
 - Bondr für Android: WLAN und Mobilfunk gleichzeitig, alle Apps über ein VPN auf dem Gerät (gVisor-Netzwerkstapel im Go-Kern), TCP und UDP (DNS, QUIC), IPv4 und IPv6, Mobilfunk mit 464XLAT. App mit Live-Durchsatz je Netz, Rollen, Gewicht, Strategie und Schnelleinstellung.
