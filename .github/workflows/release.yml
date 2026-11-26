@@ -149,7 +149,9 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: android/gradle/libs.versions.toml
       - name: bauen und testen
         env:
           REF: ${{ github.ref_name }}
