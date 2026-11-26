@@ -16,7 +16,7 @@ android {
         applicationId = "io.github.dschonas04.bondr"
         minSdk = 29
         targetSdk = 35
-        versionCode = teile[0] * 10000 + teile[1] * 100 + teile[2]
+        versionCode = maxOf(1, teile[0] * 10000 + teile[1] * 100 + teile[2])
         versionName = fassung
     }
 
