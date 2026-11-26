@@ -1,3 +1,5 @@
+//go:build linux && !android
+
 package wege
 
 import (
@@ -182,3 +184,5 @@ func binden(index uint32) func(string, string, syscall.RawConn) error {
 		return fehler
 	}
 }
+
+func aufloeser(Weg) *net.Resolver { return net.DefaultResolver }

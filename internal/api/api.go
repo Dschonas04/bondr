@@ -17,7 +17,9 @@ import (
 	"github.com/Dschonas04/bondr/internal/laden"
 	"github.com/Dschonas04/bondr/internal/system"
 	"github.com/Dschonas04/bondr/internal/umleitung"
+	"github.com/Dschonas04/bondr/internal/verbrauch"
 	"github.com/Dschonas04/bondr/internal/verteiler"
+	"github.com/Dschonas04/bondr/internal/wege"
 )
 
 // API bündelt, was die Steuerung braucht.
@@ -29,6 +31,7 @@ type API struct {
 	ProxyBereit  bool // Proxy-Port gehört bondrd
 	Version      string
 	Beenden      func()
+	Buch         *verbrauch.Buch // Datenverbrauch je Weg, darf fehlen
 	schluessel   string
 }
 
@@ -57,6 +60,8 @@ func (a *API) Handler() http.Handler {
 	m.HandleFunc("POST /abbrechen", a.abbrechen)
 	m.HandleFunc("POST /ordner", a.ordner)
 	m.HandleFunc("POST /umleitung", a.umleitung)
+	m.HandleFunc("POST /wege", a.wegeSetzen)
+	m.HandleFunc("POST /verbrauch/zuruecksetzen", a.verbrauchZurueck)
 	m.HandleFunc("POST /beenden", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		go a.Beenden()
@@ -127,6 +132,7 @@ func (a *API) stand(w http.ResponseWriter, r *http.Request) {
 		"wege":         wege,
 		"downloads":    dl,
 		"umleitung":    umleitung.Stand(e),
+		"verbrauch":    a.verbrauch(),
 	})
 }
 
@@ -264,4 +270,42 @@ func (a *API) umleitung(w http.ResponseWriter, r *http.Request) {
 			v.Programme = liste
 		}
 	})
+}
+
+func (a *API) verbrauch() map[string]verbrauch.Zaehler {
+	if a.Buch == nil {
+		return map[string]verbrauch.Zaehler{}
+	}
+	return a.Buch.Stand()
+}
+
+// wegeSetzen nimmt die Netze, die die App meldet (Android).
+func (a *API) wegeSetzen(w http.ResponseWriter, r *http.Request) {
+	var l []wege.Weg
+	if !lesen(w, r, &l) {
+		return
+	}
+	for _, x := range l {
+		if x.Name == "" || x.IP.To4() == nil || x.Schluessel == "" {
+			http.Error(w, "Weg braucht Schlüssel, Name und IPv4-Adresse", http.StatusBadRequest)
+			return
+		}
+	}
+	wege.Setzen(l)
+	a.V.Aktualisieren()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *API) verbrauchZurueck(w http.ResponseWriter, r *http.Request) {
+	var q struct {
+		Name string `json:"name"`
+	}
+	if !lesen(w, r, &q) {
+		return
+	}
+	if a.Buch != nil {
+		a.Buch.Zuruecksetzen(q.Name)
+		a.Buch.Speichern()
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

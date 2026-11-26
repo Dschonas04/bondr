@@ -1,0 +1,7 @@
+build/
+.gradle/
+.kotlin/
+ausgabe/
+bauhost.lokal
+local.properties
+app/src/main/jniLibs/

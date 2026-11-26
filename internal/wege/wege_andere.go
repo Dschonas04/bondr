@@ -38,3 +38,5 @@ func finden() ([]Weg, error) {
 }
 
 func binden(uint32) func(string, string, syscall.RawConn) error { return nil }
+
+func aufloeser(Weg) *net.Resolver { return net.DefaultResolver }

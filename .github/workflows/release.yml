@@ -24,6 +24,7 @@ jobs:
       - run: GOOS=windows go vet ./...
       - run: GOOS=darwin GOARCH=arm64 go vet ./...
       - run: go test -race ./...
+      - run: GOOS=android GOARCH=arm64 CGO_ENABLED=0 go vet ./...
       - run: python3 -m py_compile linux/bondr.py
 
   windows:
@@ -133,6 +134,32 @@ jobs:
         with:
           name: linux
           path: aus/*
+
+  android:
+    needs: pruefen
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: bauen und testen
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          f="${REF#v}"
+          case "$f" in [0-9]*.[0-9]*.[0-9]*) : ;; *) f="0.0.0" ;; esac
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0" > /dev/null
+          cd android && BONDR_FASSUNG=$f ./bauen.sh debug
+      # Das signierte APK für Releases wird mit dem festen Schlüssel außerhalb von CI gebaut
+      # und an das Release gehängt; hier wird nur geprüft, dass alles baut.
 
   veroeffentlichen:
     needs: [windows, mac, linux]

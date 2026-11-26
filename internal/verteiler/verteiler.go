@@ -344,8 +344,17 @@ func (v *Verteiler) Waehlen(ctx context.Context, adresse string) (net.Conn, *Pfa
 	if len(pfade) == 0 {
 		return nil, nil, errors.New("kein Weg ins Internet")
 	}
+	ziel6 := false
+	if ip := net.ParseIP(host); ip != nil && ip.To4() == nil {
+		ziel6 = true
+	}
 	var letzter error
+	versucht := 0
 	for _, p := range pfade {
+		if ziel6 && !p.IPv6 {
+			continue // IPv6-Ziel nur über Netze mit IPv6
+		}
+		versucht++
 		ips, err := p.Aufloesen(ctx, host)
 		if err != nil {
 			letzter = err
@@ -363,6 +372,9 @@ func (v *Verteiler) Waehlen(ctx context.Context, adresse string) (net.Conn, *Pfa
 			}
 		}
 		p.stoeren(20*time.Second, letzter) // nginx: max_fails=1 fail_timeout=20s
+	}
+	if versucht == 0 {
+		return nil, nil, errors.New("kein Netz mit IPv6")
 	}
 	return nil, nil, letzter
 }
@@ -472,4 +484,50 @@ func (g *gezaehlt) CloseWrite() error {
 		return cw.CloseWrite()
 	}
 	return nil
+}
+
+// Naechster liefert den Weg, den die nächste Verbindung nach Strategie bekäme (für UDP,
+// wo es keine Verbindung zum Zählen gibt).
+func (v *Verteiler) Naechster(v6 bool) (*Pfad, error) {
+	for _, p := range v.pfadeOrdnen(true) {
+		if !v6 || p.IPv6 {
+			return p, nil
+		}
+	}
+	return nil, errors.New("kein passender Weg ins Internet")
+}
+
+// PaketZaehlen öffnet einen UDP-Socket über p und zählt ihn wie eine Verbindung.
+func (v *Verteiler) PaketZaehlen(ctx context.Context, p *Pfad, v6 bool) (net.PacketConn, error) {
+	pc, err := p.Weg.Paket(ctx, v6)
+	if err != nil {
+		p.stoeren(20*time.Second, err)
+		return nil, err
+	}
+	p.offen.Add(1)
+	p.zuletzt.Store(time.Now().UnixNano())
+	return &paketGezaehlt{PacketConn: pc, p: p}, nil
+}
+
+type paketGezaehlt struct {
+	net.PacketConn
+	p  *Pfad
+	zu sync.Once
+}
+
+func (g *paketGezaehlt) ReadFrom(b []byte) (int, net.Addr, error) {
+	n, a, err := g.PacketConn.ReadFrom(b)
+	g.p.rein.Add(int64(n))
+	return n, a, err
+}
+
+func (g *paketGezaehlt) WriteTo(b []byte, a net.Addr) (int, error) {
+	n, err := g.PacketConn.WriteTo(b, a)
+	g.p.raus.Add(int64(n))
+	return n, err
+}
+
+func (g *paketGezaehlt) Close() error {
+	g.zu.Do(func() { g.p.offen.Add(-1) })
+	return g.PacketConn.Close()
 }

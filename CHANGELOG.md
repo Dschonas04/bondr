@@ -1,5 +1,11 @@
 # Änderungen
 
+## 3.3.0
+
+- Bondr für Android: WLAN und Mobilfunk gleichzeitig, alle Apps über ein VPN auf dem Gerät (gVisor-Netzwerkstapel im Go-Kern), TCP und UDP (DNS, QUIC), IPv4 und IPv6, Mobilfunk mit 464XLAT. App mit Live-Durchsatz je Netz, Rollen, Gewicht, Strategie und Schnelleinstellung.
+- Datenverbrauch je Weg für den laufenden Monat und insgesamt, über Neustarts hinweg gespeichert (`verbrauch.json`, `/stand` und `POST /verbrauch/zuruecksetzen`).
+- Steuerung: `POST /wege`, damit eine App dem Kern die Netze meldet.
+
 ## 3.2.0
 
 - Bondr für Linux: GTK-4-App mit Kern, Pakete .deb und .rpm (x86_64, ARM64) und Archiv mit Installationsskript. Bindung per SO_BINDTODEVICE, Systemproxy in GNOME und KDE, Namen der Verbindungen aus NetworkManager.
