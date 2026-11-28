@@ -12,6 +12,8 @@
 
 Bondr nutzt alle Internetzugänge eines Rechners gleichzeitig, wie ein Lastverteiler: Kabel, WLAN, Handy per USB oder ein zweiter Router. Für Windows 10/11, macOS 14+ (Apple Silicon wie M4 und Intel) und Linux (x86_64 und ARM64).
 
+<p align="center"><img src="docs/bilder/windows.png" width="720" alt="Bondr unter Windows: Wege mit Empfang, Senden, Rolle und Gewicht, Verteilung, Windows-Proxy, Steam ohne Proxy und Downloads über mehrere Wege"></p>
+
 ## Wie ein nginx-Upstream
 
 Jeder Weg hat ein **Gewicht** (1 bis 10) und eine **Rolle**:
